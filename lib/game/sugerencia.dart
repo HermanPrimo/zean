@@ -1,9 +1,44 @@
 import 'package:flutter/material.dart';
-import 'package:zean/game/assets.dart';
 import 'package:zean/game/encuesta.dart';
 import 'package:zean/game/notificaciones.dart';
 import 'package:zean/game/perfil.dart';
 import 'package:zean/game/recomendacion.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+// Modelo de Recomendación
+class Recomendacion {
+  final int id;
+  final String imagen;
+
+  Recomendacion({
+    required this.id,
+    required this.imagen,
+  });
+
+  // Método para convertir el JSON en un objeto Recomendacion
+  factory Recomendacion.fromJson(Map<String, dynamic> json) {
+    return Recomendacion(
+      id: json['rec_id'] as int,
+      imagen: json['rec_imagen'] ?? 'https://via.placeholder.com/400x250.png?text=No+Image+Available',
+    );
+  }
+}
+
+// Función para obtener datos desde la API
+Future<List<Recomendacion>> fetchRecomendaciones() async {
+  final url = Uri.parse('http://3.92.181.59/salud/api/v1/recomendaciones/');
+  final response = await http.get(url);
+
+  if (response.statusCode == 200) {
+    // Decodifica la respuesta para respetar UTF-8
+    final String utf8Body = utf8.decode(response.bodyBytes);
+    final List<dynamic> jsonList = jsonDecode(utf8Body);
+    return jsonList.map((json) => Recomendacion.fromJson(json)).toList();
+  } else {
+    throw Exception('Error al cargar las recomendaciones');
+  }
+}
 
 class SugerenciaPage extends StatelessWidget {
   const SugerenciaPage({Key? key}) : super(key: key);
@@ -29,8 +64,7 @@ class SugerenciaPage extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) =>
-                          const PerfilPage(), // Implementa PerfilPage
+                      builder: (context) => const PerfilPage(),
                     ),
                   );
                 },
@@ -38,26 +72,43 @@ class SugerenciaPage extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) =>
-                          const NotificacionesPage(), // Implementa PerfilPage
+                      builder: (context) => const NotificacionesPage(),
                     ),
                   );
                 },
               ),
               SizedBox(height: isTablet ? 30 : 20),
 
-              // Sugerencias (Carrusel de imágenes)
-              SizedBox(
-                height: isTablet ? 150 : 100,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    _buildSuggestionImage(Assets.uno, 1, context, isTablet),
-                    _buildSuggestionImage(Assets.dos, 2, context, isTablet),
-                    _buildSuggestionImage(Assets.tres, 3, context, isTablet),
-                    _buildSuggestionImage(Assets.cuatro, 4, context, isTablet),
-                  ],
-                ),
+              // Sugerencias (Carrusel de imágenes dinámico)
+              FutureBuilder<List<Recomendacion>>(
+                future: fetchRecomendaciones(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  } else if (snapshot.hasError) {
+                    return Center(child: Text("Error: ${snapshot.error}"));
+                  } else if (snapshot.hasData) {
+                    final recomendaciones = snapshot.data!;
+                    return SizedBox(
+                      height: isTablet ? 150 : 100,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: recomendaciones.length,
+                        itemBuilder: (context, index) {
+                          final recomendacion = recomendaciones[index];
+                          return _buildSuggestionImage(
+                            recomendacion.imagen,
+                            recomendacion.id,
+                            context,
+                            isTablet,
+                          );
+                        },
+                      ),
+                    );
+                  } else {
+                    return const Center(child: Text("No se encontraron datos"));
+                  }
+                },
               ),
               SizedBox(height: isTablet ? 30 : 20),
 
@@ -126,9 +177,25 @@ class SugerenciaPage extends StatelessWidget {
         height: isTablet ? 150 : 100,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          image: DecorationImage(
-            image: AssetImage(imagePath),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.network(
+            imagePath,
             fit: BoxFit.cover,
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return const Center(child: CircularProgressIndicator());
+            },
+            errorBuilder: (context, error, stackTrace) {
+              return const Center(
+                child: Icon(
+                  Icons.broken_image,
+                  size: 50,
+                  color: Colors.grey,
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -141,15 +208,13 @@ class SugerenciaPage extends StatelessWidget {
     required String timeRemaining,
     required BuildContext context,
     required bool isTablet,
-    bool isHighlighted = false,
   }) {
     return Container(
       margin: EdgeInsets.only(bottom: isTablet ? 16.0 : 12.0),
       padding: EdgeInsets.all(isTablet ? 16.0 : 12.0),
       decoration: BoxDecoration(
-        color: isHighlighted ? Colors.blue[50] : Colors.grey[100],
+        color: Colors.grey[100],
         borderRadius: BorderRadius.circular(12),
-        border: isHighlighted ? Border.all(color: Colors.blue, width: 2) : null,
       ),
       child: Row(
         children: [

@@ -1,5 +1,51 @@
 import 'package:flutter/material.dart';
-import 'package:zean/game/perfil.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+// Enum para el estado de la notificación
+enum EstadoNotificacion { leido, noLeido }
+
+// Modelo de Notificación
+class Notificacion {
+  final int id;
+  final String titulo;
+  final String descripcion;
+  final EstadoNotificacion estado;
+
+  Notificacion({
+    required this.id,
+    required this.titulo,
+    required this.descripcion,
+    required this.estado,
+  });
+
+  // Método para convertir el JSON en un objeto Notificación
+  factory Notificacion.fromJson(Map<String, dynamic> json) {
+    return Notificacion(
+      id: json['avi_id'] as int,
+      titulo: json['avi_nombre'] as String,
+      descripcion: json['avi_descripcion'] as String,
+      estado: (json['avi_estado'] as String) == 'noLeido'
+          ? EstadoNotificacion.noLeido
+          : EstadoNotificacion.leido,
+    );
+  }
+}
+
+// Función para obtener datos desde la API
+Future<List<Notificacion>> fetchNotificaciones() async {
+  final url = Uri.parse('http://3.92.181.59/salud/api/v1/aviso/');
+  final response = await http.get(url);
+
+  if (response.statusCode == 200) {
+    // Decodifica la respuesta para respetar UTF-8
+    final String utf8Body = utf8.decode(response.bodyBytes);
+    final List<dynamic> jsonList = jsonDecode(utf8Body);
+    return jsonList.map((json) => Notificacion.fromJson(json)).toList();
+  } else {
+    throw Exception('Error al cargar las notificaciones');
+  }
+}
 
 class NotificacionesPage extends StatelessWidget {
   const NotificacionesPage({Key? key}) : super(key: key);
@@ -14,63 +60,54 @@ class NotificacionesPage extends StatelessWidget {
           CustomHeader(
             title: "NOTIFICACIONES",
             onAvatarTap: () {
-              // Navegar a la página de perfil
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const PerfilPage(), // Implementa PerfilPage
-                ),
-              );
+              Navigator.pop(context);
             },
             onNotificationTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const NotificacionesPage(), // Implementa PerfilPage
-                ),
-              );
+              // Acción adicional si es necesario
             },
           ),
           const SizedBox(height: 16.0),
 
           // Lista de notificaciones
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16.0),
-              children: [
-                _buildNotificationCard(
-                  context,
-                  title: "Alerta presión arterial",
-                  description:
-                      "¡¡Tu presión arterial rebasa lo habitual, se recomienda aplicar medicamentos o ir a tu centro de salud más cercano!!",
-                  backgroundColor: Colors.red[100]!,
-                  iconColor: Colors.red,
-                ),
-                _buildNotificationCard(
-                  context,
-                  title: "¡Un Paseo Saludable!",
-                  description:
-                      "Haz completado la misión del día, aprovecha a canjear tus recompensas.",
-                  backgroundColor: Colors.green[100]!,
-                  iconColor: Colors.green,
-                ),
-                _buildNotificationCard(
-                  context,
-                  title: "¡Toma tu Medicamento!",
-                  description:
-                      "Haz completado la misión del día, aprovecha a canjear tus recompensas.",
-                  backgroundColor: Colors.green[100]!,
-                  iconColor: Colors.green,
-                ),
-                _buildNotificationCard(
-                  context,
-                  title: "Hidrátate Bien",
-                  description:
-                      "Recordatorio de misión diaria, \"Registra al menos 1.5 litros de agua consumidos al día durante 5 días.\"",
-                  backgroundColor: Colors.blue[100]!,
-                  iconColor: Colors.blue,
-                ),
-              ],
+            child: FutureBuilder<List<Notificacion>>(
+              future: fetchNotificaciones(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                } else if (snapshot.hasError) {
+                  return Center(child: Text("Error: ${snapshot.error}"));
+                } else if (snapshot.hasData) {
+                  final notificaciones = snapshot.data!;
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(16.0),
+                    itemCount: notificaciones.length,
+                    itemBuilder: (context, index) {
+                      final notificacion = notificaciones[index];
+
+                      // Determinar colores según el estado
+                      final backgroundColor = notificacion.estado ==
+                              EstadoNotificacion.noLeido
+                          ? Colors.red[100]!
+                          : Colors.green[100]!;
+                      final iconColor = notificacion.estado ==
+                              EstadoNotificacion.noLeido
+                          ? Colors.red
+                          : Colors.green;
+
+                      return _buildNotificationCard(
+                        context,
+                        title: notificacion.titulo,
+                        description: notificacion.descripcion,
+                        backgroundColor: backgroundColor,
+                        iconColor: iconColor,
+                      );
+                    },
+                  );
+                } else {
+                  return const Center(child: Text("No se encontraron datos"));
+                }
+              },
             ),
           ),
         ],
@@ -121,7 +158,7 @@ class NotificacionesPage extends StatelessWidget {
                     icon: const Icon(Icons.check, size: 20),
                     color: Colors.black,
                     onPressed: () {
-                      // Acción para marcar como leída o completada
+                      // Acción para marcar como leída
                     },
                   ),
                 ],
